@@ -5,17 +5,14 @@ import * as schema from "@shared/schema";
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+  console.error("DATABASE_URL is missing");
 }
 
-const connectionString = process.env.DATABASE_URL;
-const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
-
-// Supabase Postgres typically requires SSL from hosted environments (e.g. Render).
+// Render + Supabase (direct oder pooler) brauchen SSL.
+// rejectUnauthorized:false verhindert den "self-signed certificate in chain" Fehler.
 export const pool = new Pool({
-  connectionString,
-  ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
+
 export const db = drizzle(pool, { schema });
