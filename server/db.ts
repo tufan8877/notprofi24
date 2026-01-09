@@ -8,8 +8,8 @@ if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is missing");
 }
 
-// Render + Supabase (direct oder pooler) brauchen SSL.
-// rejectUnauthorized:false verhindert den "self-signed certificate in chain" Fehler.
+// Supabase (besonders Pooler) braucht SSL.
+// rejectUnauthorized:false verhindert "self-signed certificate in certificate chain".
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
