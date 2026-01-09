@@ -7,6 +7,14 @@ import { setupAdminAuth, requireAdmin } from "./adminAuth";
 const app = express();
 const httpServer = createServer(app);
 
+// Log unhandled errors instead of crashing silently
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -29,13 +37,16 @@ setupAdminAuth(app);
 // Protect all API routes except auth endpoints
 app.use((req, res, next) => {
   if (!req.path.startsWith("/api")) return next();
+
   const open = new Set([
     "/api/auth/login",
     "/api/auth/user",
     "/api/auth/logout",
     "/api/login",
     "/api/logout",
+    "/api/health",
   ]);
+
   if (open.has(req.path)) return next();
   return requireAdmin(req, res, next);
 });
@@ -69,7 +80,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -80,17 +90,18 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
+  // IMPORTANT: DO NOT throw after sending response (crashes Node => 502 on Render)
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const status = err?.status || err?.statusCode || 500;
+    const message = err?.message || "Internal Server Error";
 
+    console.error("[API ERROR]", err);
+
+    if (res.headersSent) return;
     res.status(status).json({ message });
-    throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // serve static client in production
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -98,10 +109,6 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
